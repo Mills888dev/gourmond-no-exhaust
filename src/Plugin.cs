@@ -42,23 +42,26 @@ namespace SlugTemplate
 
         private void RainWorld_OnModsInit(On.RainWorld.orig_OnModsInit orig, RainWorld self)
         {
-            orig(self);
-            if (this.initialized)
+            orig.Invoke(self);
+            bool flag2 = this.initialized;
+            if (!flag2)
             {
-                return;
-            }
-            this.initialized = true;
 
-            optionsMenuInstance = new OptionsMenu1(this);
-            try
-            {
-                MachineConnector.SetRegisteredOI("Plugin", optionsMenuInstance);
-            }
-            catch (Exception ex)
-            {
-                Debug.Log($"Remix Menu Template examples: Hook_OnModsInit options failed init error {optionsMenuInstance}{ex}");
-                Logger.LogError(ex);
-                Logger.LogMessage("WHOOPS");
+
+                this.initialized = true;
+                this.optionsMenuInstance = new OptionsMenu1(this);
+
+                optionsMenuInstance = new OptionsMenu1(this);
+                try
+                {
+                    MachineConnector.SetRegisteredOI("mills888.GourmandIsGod", this.optionsMenuInstance);
+                }
+                catch (Exception ex)
+                {
+                    Debug.Log($"Remix Menu Template examples: Hook_OnModsInit options failed init error {optionsMenuInstance}{ex}");
+                    Logger.LogError(ex);
+                    Logger.LogMessage("WHOOPS");
+                }
             }
         }
 
@@ -70,16 +73,17 @@ namespace SlugTemplate
         }
         private void Player_Update(On.Player.orig_Update orig, Player self, bool eu)
         {
-            if (OptionsMenu1.gourmandFlightActive.Value == true)
+            orig(self, eu);
+            if (self.SlugCatClass == MoreSlugcatsEnums.SlugcatStatsName.Gourmand)
             {
-                orig(self, eu);
-                if (self.SlugCatClass == MoreSlugcatsEnums.SlugcatStatsName.Gourmand)
-                {
-                    self.aerobicLevel = 0;
-                    self.exhausted = false;
-                    self.gourmandExhausted = false;
+                self.aerobicLevel = 0;
+                self.exhausted = false;
+                self.gourmandExhausted = false;
 
-                }
+            }
+            if (OptionsMenu1.gourmandFlightActive.Value == true && self.SlugCatClass == MoreSlugcatsEnums.SlugcatStatsName.Gourmand)
+            {
+
                 if (self.input[0].pckp && !monkAscension && self.input[0].jmp)
                 {
                     monkAscension = true;
@@ -149,8 +153,8 @@ namespace SlugTemplate
                         self.room.game.cameras[0].hud.textPrompt.AddMessage(self.room.game.rainWorld.inGameTranslator.Translate("Hold throw and directional inputs while flying to perform an ascension."), 80, 240, true, true);
                     }
                     self.gravity = 0f;
-                    self.airFriction = 0.7f;
-                    float num = 2.75f;
+                    self.airFriction = 0.5f;
+                    float num = 2.45f;
                     if (self.killWait >= 0.2f && !self.forceBurst)
                     {
                         self.airFriction = 0.1f;
@@ -418,18 +422,103 @@ namespace SlugTemplate
                 }
 
             }
+
+
+            if (OptionsMenu1.PyroJumpEnabled.Value && self.SlugCatClass == MoreSlugcatsEnums.SlugcatStatsName.Gourmand)
+            {
+                if (self.input[0].jmp && self.input[0].pckp && self.pyroJumpCooldown < 0)
+                {
+                    self.noGrabCounter = 5;
+                    Vector2 pos = self.firstChunk.pos;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        self.room.AddObject(new Explosion.ExplosionSmoke(pos, Custom.RNV() * 5f * Random.value, 1f));
+                    }
+                    self.room.AddObject(new Explosion.ExplosionLight(pos, 160f, 1f, 3, Color.white));
+                    for (int j = 0; j < 10; j++)
+                    {
+                        Vector2 a = Custom.RNV();
+                        self.room.AddObject(new Spark(pos + a * Random.value * 40f, a * Mathf.Lerp(4f, 30f, Random.value), Color.white, null, 4, 18));
+                    }
+                    self.room.PlaySound(SoundID.Fire_Spear_Explode, pos, 0.3f + Random.value * 0.3f, 0.5f + Random.value * 2f);
+                    self.room.InGameNoise(new Noise.InGameNoise(pos, 8000f, self, 1f));
+                    if (self.bodyMode == Player.BodyModeIndex.ZeroG || self.room.gravity == 0f || self.gravity == 0f)
+                    {
+                        float num3 = (float)self.input[0].x;
+                        float num4 = (float)self.input[0].y;
+                        while (num3 == 0f && num4 == 0f)
+                        {
+                            num3 = (float)(((double)Random.value <= 0.33) ? 0 : (((double)Random.value <= 0.5) ? 1 : -1));
+                            num4 = (float)(((double)Random.value <= 0.33) ? 0 : (((double)Random.value <= 0.5) ? 1 : -1));
+                        }
+                        self.bodyChunks[0].vel.x = 9f * num3;
+                        self.bodyChunks[0].vel.y = 9f * num4;
+                        self.bodyChunks[1].vel.x = 8f * num3;
+                        self.bodyChunks[1].vel.y = 8f * num4;
+                        self.pyroJumpCooldown = 150f;
+                    }
+                    else
+                    {
+                        if (self.input[0].x != 0)
+                        {
+                            self.bodyChunks[0].vel.y = Mathf.Min(self.bodyChunks[0].vel.y, 0f) + 8f * 3f;
+                            self.bodyChunks[1].vel.y = Mathf.Min(self.bodyChunks[1].vel.y, 0f) + 7f * 3f;
+                            self.jumpBoost = 6f;
+                        }
+                        if (self.input[0].x == 0 || self.input[0].y == 1)
+                        {
+                            self.bodyChunks[0].vel.y = 11f * 3f;
+                            self.bodyChunks[1].vel.y = 10f * 3f;
+                        }
+                        if (self.input[0].y == 1)
+                        {
+                            self.bodyChunks[0].vel.x = 10f * 3 * (float)self.input[0].x;
+                            self.bodyChunks[1].vel.x = 8f * 3 * (float)self.input[0].x;
+                        }
+                        else
+                        {
+                            self.bodyChunks[0].vel.x = 15f * 3 * (float)self.input[0].x;
+                            self.bodyChunks[1].vel.x = 13f * 3 * (float)self.input[0].x;
+                        }
+                        self.animation = Player.AnimationIndex.Flip;
+                        self.pyroJumpCooldown = 20f;
+                        self.bodyMode = Player.BodyModeIndex.Default;
+                    }
+                }
+                if (self.pyroJumpCooldown > -1)
+                {
+                    self.pyroJumpCooldown--;
+                }
+            }
+
+
+
+            if (true)
+            {
+                if (self.input[0].pckp && self.FreeHand() > -1)
+                {
+                    self.room.PlaySound(MoreSlugcatsEnums.MSCSoundID.SM_Spear_Grab, 0f, 1f, 1f + Random.value * 0.5f);
+                    AbstractSpear abstractSpear = new AbstractSpear(self.room.world, null, self.room.GetWorldCoordinate(self.mainBodyChunk.pos), self.room.game.GetNewID(), false);
+                    self.room.abstractRoom.AddEntity(abstractSpear);
+                    abstractSpear.pos = self.abstractCreature.pos;
+                    abstractSpear.RealizeInRoom();
+                    self.SlugcatGrab(abstractSpear.realizedObject, self.FreeHand());
+                }
+            }
         }
-        }
+
+    }
 
 
 
 
     public class OptionsMenu1 : OptionInterface
     {
-        public static Configurable<bool> gourmandFlightActive;
+      //  public static Configurable<bool> gourmandFlightActive;
         public OptionsMenu1(Plugin plugin)
         {
             gourmandFlightActive = this.config.Bind<bool>("configgourmandFlightActive", false);
+            PyroJumpEnabled = this.config.Bind<bool>("PyroJumpEnabled", false);
         }
         public override void Initialize()
         {
@@ -451,23 +540,30 @@ namespace SlugTemplate
                     _increment = 1,
                     mousewheelTick = 25,
                 },*/
-                new OpCheckBox(gourmandFlightActive, 300f, 400f),
-               // new OpLabel(50f, 450f, "explosion size(default = 100)"),
-                 new OpLabel(250f, 450f, "Flight (to activate press shift+z"),
+                //arti shit
+                new OpCheckBox(PyroJumpEnabled, 25f, 400f),
+                new OpLabel(25f, 450f, "Artificer jump(check settings for keybind)"),
+
+                //saint shit
+                new OpCheckBox(gourmandFlightActive, 400f, 400f),
+                 new OpLabel(350f, 450f, "Flight (check settings for keybind)")
 
             };
             opTab1.AddItems(UIArrayElements);
 
-            UIelement[] UIArrayElements2 = new UIelement[] //create an array of ui elements
+          /*  UIelement[] UIArrayElements2 = new UIelement[] //create an array of ui elements
             {
                 //new OpSlider(testFloatSlider, new Vector2(50, 400), 100){max = 100, hideLabel = false}, // Using "hideLabel = true" makes the number disappear but the shadow of where the number would be still appears, why lol.
 
-            };
+            };*/
         }
 
         // Configurable values. They are bound to the config in constructor, and then passed to UI elements.
         // They will contain values set in the menu. And to fetch them in your code use their NAME.Value. For example to get the boolean testCheckBox.Value, to get the integer testSlider.Value
-        //public readonly Configurable<TYPE> NAME;        
+        //public readonly Configurable<TYPE> NAME;
+        public static Configurable<bool> gourmandFlightActive;
+        public static Configurable<bool> PyroJumpEnabled;
+
     }
 }
     

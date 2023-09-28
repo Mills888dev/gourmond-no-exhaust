@@ -1,0 +1,9 @@
+C:\rainwroldMods\gourmond no exhaust\src\bin\Debug\net48\gourmand is god.dll
+C:\rainwroldMods\gourmond no exhaust\src\bin\Debug\net48\gourmand is god.pdb
+C:\rainwroldMods\gourmond no exhaust\src\obj\Debug\net48\gourmand is god.csproj.AssemblyReference.cache
+C:\rainwroldMods\gourmond no exhaust\src\obj\Debug\net48\gourmand is god.GeneratedMSBuildEditorConfig.editorconfig
+C:\rainwroldMods\gourmond no exhaust\src\obj\Debug\net48\gourmand is god.AssemblyInfoInputs.cache
+C:\rainwroldMods\gourmond no exhaust\src\obj\Debug\net48\gourmand is god.AssemblyInfo.cs
+C:\rainwroldMods\gourmond no exhaust\src\obj\Debug\net48\gourmand is god.csproj.CoreCompileInputs.cache
+C:\rainwroldMods\gourmond no exhaust\src\obj\Debug\net48\gourmand is god.dll
+C:\rainwroldMods\gourmond no exhaust\src\obj\Debug\net48\gourmand is god.pdb

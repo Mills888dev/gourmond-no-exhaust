@@ -1,7 +1,6 @@
 ﻿using System;
 using BepInEx;
 using UnityEngine;
-
 using RWCustom;
 using System.Xml.Schema;
 using IL;
@@ -9,37 +8,504 @@ using MoreSlugcats;
 using static MonoMod.InlineRT.MonoModRule;
 using Random = UnityEngine.Random;
 using Menu.Remix.MixedUI;
-
+using ImprovedInput;
 using IL.MoreSlugcats;
 using Love = MoreSlugcats.Love;
 using STOracleBehavior = MoreSlugcats.STOracleBehavior;
 using MoreSlugcatsEnums = MoreSlugcats.MoreSlugcatsEnums;
 using CLOracleBehavior = MoreSlugcats.CLOracleBehavior;
+using System.Diagnostics.Eventing.Reader;
+using Smoke;
+using Noise;
 
 namespace SlugTemplate
 {
-    [BepInPlugin(MOD_ID, "GourmandIsGod", "0.1.0")]
+    [BepInPlugin(MOD_ID, "GourmandIsGod", "0.1.1")]
     public class Plugin : BaseUnityPlugin
-
-
     {
+        public int monkCooldown = 0;    
+        public BombSmoke smoke;
+        public bool explosionIsForShow;
+        public Color explodeColor = new Color(1f, 0.4f, 0.3f);
         private OptionsMenu1 optionsMenuInstance;
         private bool initialized;
         bool flag = true;
         bool monkAscension = false;
         bool deactivateAscension;
+        private BodyChunk hitChunk;
         private const string MOD_ID = "mills888.GourmandIsGod";
+
+
+        //keybinding shenanagins
+        public static readonly PlayerKeybind SaintFlight = PlayerKeybind.Register("GourmandIsGod:Flight", "GourmandIsGOD", "SaintFlight", KeyCode.A, KeyCode.None);
+        public static readonly PlayerKeybind ArtificersBoom = PlayerKeybind.Register("GourmandIsGod:Boom", "GourmandIsGOD", "ArtiBoom", KeyCode.S, KeyCode.None);
+        public static readonly PlayerKeybind SpearMastersSpears = PlayerKeybind.Register("GourmandIsGod:Spears", "GourmandIsGOD", "SpearMastersSpears", KeyCode.D, KeyCode.None);
+        public static readonly PlayerKeybind GourmandsBarf = PlayerKeybind.Register("GourmandIsGod:Food", "GourmandIsGod", "GourmandsBarf", KeyCode.F, KeyCode.None);
+       
+
 
         // Add hooks
         public void OnEnable()
         {
             On.RainWorld.OnModsInit += Extras.WrapInit(LoadResources);
-
+            //  On.Creature.Die += GODSSMITE;
+            On.Creature.Stun += GODSMITE;
             On.Player.Update += Player_Update;
             On.RainWorld.OnModsInit += RainWorld_OnModsInit;
-
         }
 
+        private void GODSMITE(On.Creature.orig_Stun orig, Creature self, int st)
+        {
+            if (self.abstractCreature.karmicPotential < 5 && ISGORMAUND)
+            {
+                Vector2 vector = Vector2.Lerp(self.firstChunk.pos, self.firstChunk.lastPos, 0.35f);
+                self.room.AddObject(new SootMark(self.room, vector, 80f, true));
+                if (explosionIsForShow)
+                {
+                    self.room.AddObject(new Explosion(self.room, self, vector, 7, 250f, 6.2f, 2f, 280f, 0.25f, self, 0.7f, 160f, 1f));
+                }
+                self.room.AddObject(new Explosion.ExplosionLight(vector, 280f, 1f, 7, explodeColor));
+                self.room.AddObject(new Explosion.ExplosionLight(vector, 230f, 1f, 3, new Color(1f, 1f, 1f)));
+                self.room.AddObject(new ExplosionSpikes(self.room, vector, 14, 30f, 9f, 7f, 170f, explodeColor));
+                self.room.AddObject(new ShockWave(vector, 330f, 0.045f, 5, false));
+                for (int i = 0; i < 25; i++)
+                {
+                    Vector2 a = Custom.RNV();
+                    if (self.room.GetTile(vector + a * 20f).Solid)
+                    {
+                        if (!self.room.GetTile(vector - a * 20f).Solid)
+                        {
+                            a *= -1f;
+                        }
+                        else
+                        {
+                            a = Custom.RNV();
+                        }
+                    }
+                    for (int j = 0; j < 3; j++)
+                    {
+                        self.room.AddObject(new Spark(vector + a * Mathf.Lerp(30f, 60f, Random.value), a * Mathf.Lerp(7f, 38f, Random.value) + Custom.RNV() * 20f * Random.value, Color.Lerp(explodeColor, new Color(1f, 1f, 1f), Random.value), null, 11, 28));
+                    }
+                    self.room.AddObject(new Explosion.FlashingSmoke(vector + a * 40f * Random.value, a * Mathf.Lerp(4f, 20f, Mathf.Pow(Random.value, 2f)), 1f + 0.05f * Random.value, new Color(1f, 1f, 1f), explodeColor, Random.Range(3, 11)));
+                }
+                if (smoke != null)
+                {
+                    for (int k = 0; k < 8; k++)
+                    {
+                        smoke.EmitWithMyLifeTime(vector + Custom.RNV(), Custom.RNV() * Random.value * 17f);
+                    }
+                }
+                for (int l = 0; l < 6; l++)
+                {
+                    self.room.AddObject(new ScavengerBomb.BombFragment(vector, Custom.DegToVec(((float)l + Random.value) / 6f * 360f) * Mathf.Lerp(18f, 38f, Random.value)));
+                }
+                self.room.ScreenMovement(new Vector2?(vector), default(Vector2), 1.3f);
+                for (int m = 0; m < self.abstractPhysicalObject.stuckObjects.Count; m++)
+                {
+                    self.abstractPhysicalObject.stuckObjects[m].Deactivate();
+                }
+                self.room.PlaySound(SoundID.Bomb_Explode, vector);
+                self.room.InGameNoise(new InGameNoise(vector, 9000f, self, 1f));
+                bool flag = hitChunk != null;
+                for (int n = 0; n < 5; n++)
+                {
+                    if (self.room.GetTile(vector + Custom.fourDirectionsAndZero[n].ToVector2() * 20f).Solid)
+                    {
+                        flag = true;
+                        break;
+                    }
+                }
+                if (flag)
+                {
+                    if (smoke == null)
+                    {
+                        smoke = new BombSmoke(self.room, vector, null, explodeColor);
+                        self.room.AddObject(smoke);
+                    }
+                    if (hitChunk != null)
+                    {
+                        smoke.chunk = hitChunk;
+                    }
+                    else
+                    {
+                        smoke.chunk = null;
+                        smoke.fadeIn = 1f;
+                    }
+                    smoke.pos = vector;
+                    smoke.stationary = true;
+                    smoke.DisconnectSmoke();
+                }
+                else if (smoke != null)
+                {
+                    smoke.Destroy();
+                }
+
+                self.deaf = 0;
+                self.dead = true;
+            }
+        }
+
+
+
+        /* private void GODSSMITE(On.RoomRain.orig_CreatureSmashedInGround orig, RoomRain self, Creature crit, float speed)
+         {
+             Vector2 vector = Vector2.Lerp(self.firstChunk.pos, self.firstChunk.lastPos, 0.35f);
+             self.room.AddObject(new SootMark(self.room, vector, 80f, true));
+             if (!self.explosionIsForShow)
+             {
+                 self.room.AddObject(new Explosion(self.room, self, vector, 7, 250f, 6.2f, 2f, 280f, 0.25f, self.thrownBy, 0.7f, 160f, 1f));
+             }
+             self.room.AddObject(new Explosion.ExplosionLight(vector, 280f, 1f, 7, self.explodeColor));
+             self.room.AddObject(new Explosion.ExplosionLight(vector, 230f, 1f, 3, new Color(1f, 1f, 1f)));
+             self.room.AddObject(new ExplosionSpikes(self.room, vector, 14, 30f, 9f, 7f, 170f, self.explodeColor));
+             self.room.AddObject(new ShockWave(vector, 330f, 0.045f, 5, false));
+             for (int i = 0; i < 25; i++)
+             {
+                 Vector2 a = Custom.RNV();
+                 if (self.room.GetTile(vector + a * 20f).Solid)
+                 {
+                     if (!self.room.GetTile(vector - a * 20f).Solid)
+                     {
+                         a *= -1f;
+                     }
+                     else
+                     {
+                         a = Custom.RNV();
+                     }
+                 }
+                 for (int j = 0; j < 3; j++)
+                 {
+                     self.room.AddObject(new Spark(vector + a * Mathf.Lerp(30f, 60f, Random.value), a * Mathf.Lerp(7f, 38f, Random.value) + Custom.RNV() * 20f * Random.value, Color.Lerp(self.explodeColor, new Color(1f, 1f, 1f), Random.value), null, 11, 28));
+                 }
+                 self.room.AddObject(new Explosion.FlashingSmoke(vector + a * 40f * Random.value, a * Mathf.Lerp(4f, 20f, Mathf.Pow(Random.value, 2f)), 1f + 0.05f * Random.value, new Color(1f, 1f, 1f), self.explodeColor, Random.Range(3, 11)));
+             }
+             if (smoke != null)
+             {
+                 for (int k = 0; k < 8; k++)
+                 {
+                     smoke.EmitWithMyLifeTime(vector + Custom.RNV(), Custom.RNV() * Random.value * 17f);
+                 }
+             }
+             for (int l = 0; l < 6; l++)
+             {
+                 self.room.AddObject(new ScavengerBomb.BombFragment(vector, Custom.DegToVec(((float)l + Random.value) / 6f * 360f) * Mathf.Lerp(18f, 38f, Random.value)));
+             }
+             self.room.ScreenMovement(new Vector2?(vector), default(Vector2), 1.3f);
+             for (int m = 0; m < self.abstractPhysicalObject.stuckObjects.Count; m++)
+             {
+                 self.abstractPhysicalObject.stuckObjects[m].Deactivate();
+             }
+             self.room.PlaySound(SoundID.Bomb_Explode, vector);
+             self.room.InGameNoise(new InGameNoise(vector, 9000f, self, 1f));
+             bool flag = hitChunk != null;
+             for (int n = 0; n < 5; n++)
+             {
+                 if (self.room.GetTile(vector + Custom.fourDirectionsAndZero[n].ToVector2() * 20f).Solid)
+                 {
+                     flag = true;
+                     break;
+                 }
+             }
+             if (flag)
+             {
+                 if (smoke == null)
+                 {
+                     smoke = new BombSmoke(self.room, vector, null, self.explodeColor);
+                     self.room.AddObject(smoke);
+                 }
+                 if (hitChunk != null)
+                 {
+                     smoke.chunk = hitChunk;
+                 }
+                 else
+                 {
+                     smoke.chunk = null;
+                     smoke.fadeIn = 1f;
+                 }
+                 smoke.pos = vector;
+                 smoke.stationary = true;
+                 smoke.DisconnectSmoke();
+             }
+             else if (smoke != null)
+             {
+                 smoke.Destroy();
+             }
+             self.Destroy();        }
+
+        /*  private void GODSSMITE(On.Creature.orig_Die orig, Creature self)
+          {
+              if(self.abstractCreature.)
+              {
+
+              }
+              Vector2 vector = Vector2.Lerp(self.firstChunk.pos, self.firstChunk.lastPos, 0.35f);
+              self.room.AddObject(new SootMark(self.room, vector, 80f, true));
+              if (explosionIsForShow)
+              {
+                  self.room.AddObject(new Explosion(self.room, self, vector, 7, 250f, 6.2f, 2f, 280f, 0.25f, self, 0.7f, 160f, 1f));
+              }
+              self.room.AddObject(new Explosion.ExplosionLight(vector, 280f, 1f, 7, explodeColor));
+              self.room.AddObject(new Explosion.ExplosionLight(vector, 230f, 1f, 3, new Color(1f, 1f, 1f)));
+              self.room.AddObject(new ExplosionSpikes(self.room, vector, 14, 30f, 9f, 7f, 170f, explodeColor));
+              self.room.AddObject(new ShockWave(vector, 330f, 0.045f, 5, false));
+              for (int i = 0; i < 25; i++)
+              {
+                  Vector2 a = Custom.RNV();
+                  if (self.room.GetTile(vector + a * 20f).Solid)
+                  {
+                      if (!self.room.GetTile(vector - a * 20f).Solid)
+                      {
+                          a *= -1f;
+                      }
+                      else
+                      {
+                          a = Custom.RNV();
+                      }
+                  }
+                  for (int j = 0; j < 3; j++)
+                  {
+                      self.room.AddObject(new Spark(vector + a * Mathf.Lerp(30f, 60f, Random.value), a * Mathf.Lerp(7f, 38f, Random.value) + Custom.RNV() * 20f * Random.value, Color.Lerp(explodeColor, new Color(1f, 1f, 1f), Random.value), null, 11, 28));
+                  }
+                  self.room.AddObject(new Explosion.FlashingSmoke(vector + a * 40f * Random.value, a * Mathf.Lerp(4f, 20f, Mathf.Pow(Random.value, 2f)), 1f + 0.05f * Random.value, new Color(1f, 1f, 1f), explodeColor, Random.Range(3, 11)));
+              }
+              if (smoke != null)
+              {
+                  for (int k = 0; k < 8; k++)
+                  {
+                      smoke.EmitWithMyLifeTime(vector + Custom.RNV(), Custom.RNV() * Random.value * 17f);
+                  }
+              }
+              for (int l = 0; l < 6; l++)
+              {
+                  self.room.AddObject(new ScavengerBomb.BombFragment(vector, Custom.DegToVec(((float)l + Random.value) / 6f * 360f) * Mathf.Lerp(18f, 38f, Random.value)));
+              }
+              self.room.ScreenMovement(new Vector2?(vector), default(Vector2), 1.3f);
+              for (int m = 0; m < self.abstractPhysicalObject.stuckObjects.Count; m++)
+              {
+                  self.abstractPhysicalObject.stuckObjects[m].Deactivate();
+              }
+              self.room.PlaySound(SoundID.Bomb_Explode, vector);
+              self.room.InGameNoise(new InGameNoise(vector, 9000f, self, 1f));
+              bool flag = hitChunk != null;
+              for (int n = 0; n < 5; n++)
+              {
+                  if (self.room.GetTile(vector + Custom.fourDirectionsAndZero[n].ToVector2() * 20f).Solid)
+                  {
+                      flag = true;
+                      break;
+                  }
+              }
+              if (flag)
+              {
+                  if (smoke == null)
+                  {
+                      smoke = new BombSmoke(self.room, vector, null, explodeColor);
+                      self.room.AddObject(smoke);
+                  }
+                  if (hitChunk != null)
+                  {
+                      smoke.chunk = hitChunk;
+                  }
+                  else
+                  {
+                      smoke.chunk = null;
+                      smoke.fadeIn = 1f;
+                  }
+                  smoke.pos = vector;
+                  smoke.stationary = true;
+                  smoke.DisconnectSmoke();
+              }
+              else if (smoke != null)
+              {
+                  smoke.Destroy();
+              }
+          }*/
+
+
+
+        /* private void GODSSMITE(On.RoomRain.orig_CreatureSmashedInGround orig, RoomRain self, Creature crit, float speed)
+         {
+             Vector2 vector = Vector2.Lerp(self.firstChunk.pos, self.firstChunk.lastPos, 0.35f);
+             self.room.AddObject(new SootMark(self.room, vector, 80f, true));
+             if (!self.explosionIsForShow)
+             {
+                 self.room.AddObject(new Explosion(self.room, self, vector, 7, 250f, 6.2f, 2f, 280f, 0.25f, self.thrownBy, 0.7f, 160f, 1f));
+             }
+             self.room.AddObject(new Explosion.ExplosionLight(vector, 280f, 1f, 7, self.explodeColor));
+             self.room.AddObject(new Explosion.ExplosionLight(vector, 230f, 1f, 3, new Color(1f, 1f, 1f)));
+             self.room.AddObject(new ExplosionSpikes(self.room, vector, 14, 30f, 9f, 7f, 170f, self.explodeColor));
+             self.room.AddObject(new ShockWave(vector, 330f, 0.045f, 5, false));
+             for (int i = 0; i < 25; i++)
+             {
+                 Vector2 a = Custom.RNV();
+                 if (self.room.GetTile(vector + a * 20f).Solid)
+                 {
+                     if (!self.room.GetTile(vector - a * 20f).Solid)
+                     {
+                         a *= -1f;
+                     }
+                     else
+                     {
+                         a = Custom.RNV();
+                     }
+                 }
+                 for (int j = 0; j < 3; j++)
+                 {
+                     self.room.AddObject(new Spark(vector + a * Mathf.Lerp(30f, 60f, Random.value), a * Mathf.Lerp(7f, 38f, Random.value) + Custom.RNV() * 20f * Random.value, Color.Lerp(self.explodeColor, new Color(1f, 1f, 1f), Random.value), null, 11, 28));
+                 }
+                 self.room.AddObject(new Explosion.FlashingSmoke(vector + a * 40f * Random.value, a * Mathf.Lerp(4f, 20f, Mathf.Pow(Random.value, 2f)), 1f + 0.05f * Random.value, new Color(1f, 1f, 1f), self.explodeColor, Random.Range(3, 11)));
+             }
+             if (smoke != null)
+             {
+                 for (int k = 0; k < 8; k++)
+                 {
+                     smoke.EmitWithMyLifeTime(vector + Custom.RNV(), Custom.RNV() * Random.value * 17f);
+                 }
+             }
+             for (int l = 0; l < 6; l++)
+             {
+                 self.room.AddObject(new ScavengerBomb.BombFragment(vector, Custom.DegToVec(((float)l + Random.value) / 6f * 360f) * Mathf.Lerp(18f, 38f, Random.value)));
+             }
+             self.room.ScreenMovement(new Vector2?(vector), default(Vector2), 1.3f);
+             for (int m = 0; m < self.abstractPhysicalObject.stuckObjects.Count; m++)
+             {
+                 self.abstractPhysicalObject.stuckObjects[m].Deactivate();
+             }
+             self.room.PlaySound(SoundID.Bomb_Explode, vector);
+             self.room.InGameNoise(new InGameNoise(vector, 9000f, self, 1f));
+             bool flag = hitChunk != null;
+             for (int n = 0; n < 5; n++)
+             {
+                 if (self.room.GetTile(vector + Custom.fourDirectionsAndZero[n].ToVector2() * 20f).Solid)
+                 {
+                     flag = true;
+                     break;
+                 }
+             }
+             if (flag)
+             {
+                 if (smoke == null)
+                 {
+                     smoke = new BombSmoke(self.room, vector, null, self.explodeColor);
+                     self.room.AddObject(smoke);
+                 }
+                 if (hitChunk != null)
+                 {
+                     smoke.chunk = hitChunk;
+                 }
+                 else
+                 {
+                     smoke.chunk = null;
+                     smoke.fadeIn = 1f;
+                 }
+                 smoke.pos = vector;
+                 smoke.stationary = true;
+                 smoke.DisconnectSmoke();
+             }
+             else if (smoke != null)
+             {
+                 smoke.Destroy();
+             }
+             self.Destroy();
+         }*/
+
+        public static AbstractPhysicalObject RandomStomachItem(PhysicalObject caller)
+        {
+            float value = Random.value;
+            AbstractPhysicalObject abstractPhysicalObject;
+            if (value <= 0.32894737f)
+            {
+                abstractPhysicalObject = new AbstractPhysicalObject(caller.room.world, AbstractPhysicalObject.AbstractObjectType.ScavengerBomb, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID());
+            }
+            else if (value <= 0.4276316f)
+            {
+                abstractPhysicalObject = new AbstractConsumable(caller.room.world, AbstractPhysicalObject.AbstractObjectType.Mushroom, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), -1, -1, null);
+            }
+            else if (value <= 0.5065789f)
+            {
+                abstractPhysicalObject = new AbstractConsumable(caller.room.world, AbstractPhysicalObject.AbstractObjectType.KarmaFlower, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), -1, -1, null);
+            }
+            else if (value <= 0.6118421f)
+            {
+                abstractPhysicalObject = new WaterNut.AbstractWaterNut(caller.room.world, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), -1, -1, null, false);
+            }
+            else if (value <= 0.6644737f)
+            {
+                abstractPhysicalObject = new AbstractCreature(caller.room.world, StaticWorld.GetCreatureTemplate(CreatureTemplate.Type.Deer), null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID());
+            }
+            else if (value <= 0.7302632f)
+            {
+                abstractPhysicalObject = new AbstractCreature(caller.room.world, StaticWorld.GetCreatureTemplate(CreatureTemplate.Type.VultureGrub), null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID());
+            }
+            else if (value <= 0.79605263f)
+            {
+                abstractPhysicalObject = new AbstractCreature(caller.room.world, StaticWorld.GetCreatureTemplate(CreatureTemplate.Type.Slugcat), null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID());
+            }
+            else if (value <= 0.82894737f)
+            {
+                abstractPhysicalObject = new AbstractConsumable(caller.room.world, AbstractPhysicalObject.AbstractObjectType.PuffBall, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), -1, -1, null);
+            }
+            else if (value <= 0.8486842f)
+            {
+                abstractPhysicalObject = new AbstractPhysicalObject(caller.room.world, AbstractPhysicalObject.AbstractObjectType.ScavengerBomb, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID());
+            }
+            else if (value <= 0.9144737f)
+            {
+                abstractPhysicalObject = new BubbleGrass.AbstractBubbleGrass(caller.room.world, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), 1f, -1, -1, null);
+            }
+            else if (value <= 0.93421054f)
+            {
+                abstractPhysicalObject = new SporePlant.AbstractSporePlant(caller.room.world, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), -1, -1, null, false, (double)Random.value < 0.5);
+            }
+            else if (value <= 0.46710527f)
+            {
+                Color color = new Color(1f, 0.8f, 0.3f);
+                int ownerIterator = 1;
+                if (Random.value <= 0.35f)
+                {
+                    color = new Color(0.44705883f, 0.9019608f, 0.76862746f);
+                    ownerIterator = 0;
+                }
+                else if (Random.value <= 0.05f)
+                {
+                    color = new Color(0f, 1f, 0f);
+                    ownerIterator = 2;
+                }
+                abstractPhysicalObject = new OverseerCarcass.AbstractOverseerCarcass(caller.room.world, null, caller.abstractPhysicalObject.pos, caller.room.game.GetNewID(), color, ownerIterator);
+            }
+            else if (value <= 0.4736842f)
+            {
+                abstractPhysicalObject = new AbstractConsumable(caller.room.world, AbstractPhysicalObject.AbstractObjectType.KarmaFlower, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), -1, -1, null);
+            }
+            else if (value <= 0.9934211f)
+            {
+                abstractPhysicalObject = new AbstractPhysicalObject(caller.room.world, AbstractPhysicalObject.AbstractObjectType.Lantern, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID());
+            }
+            else if (value <= 0.79605263f)
+            {
+                abstractPhysicalObject = new AbstractCreature(caller.room.world, StaticWorld.GetCreatureTemplate(CreatureTemplate.Type.TubeWorm), null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID());
+            }
+            else if (value <= 0.796052000f)
+            {
+                abstractPhysicalObject = new AbstractCreature(caller.room.world, StaticWorld.GetCreatureTemplate(CreatureTemplate.Type.DaddyLongLegs), null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID());
+            }
+            else if (value <= 0.8f)
+                {
+                    abstractPhysicalObject = new VultureMask.AbstractVultureMask(caller.room.world, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), caller.abstractPhysicalObject.ID.RandomSeed, (double)Random.value <= 0.05);
+                }
+                else
+                {
+                    abstractPhysicalObject = new DataPearl.AbstractDataPearl(caller.room.world, AbstractPhysicalObject.AbstractObjectType.DataPearl, null, caller.room.GetWorldCoordinate(caller.firstChunk.pos), caller.room.game.GetNewID(), -1, -1, null, DataPearl.AbstractDataPearl.DataPearlType.Misc);
+                }
+                if (AbstractConsumable.IsTypeConsumable(abstractPhysicalObject.type))
+                {
+                    (abstractPhysicalObject as AbstractConsumable).isFresh = false;
+                    (abstractPhysicalObject as AbstractConsumable).isConsumed = true;
+                }
+                return abstractPhysicalObject;
+        }
+
+        public bool ISGORMAUND;
         private void RainWorld_OnModsInit(On.RainWorld.orig_OnModsInit orig, RainWorld self)
         {
             orig.Invoke(self);
@@ -73,19 +539,38 @@ namespace SlugTemplate
         }
         private void Player_Update(On.Player.orig_Update orig, Player self, bool eu)
         {
+
             orig(self, eu);
             if (self.SlugCatClass == MoreSlugcatsEnums.SlugcatStatsName.Gourmand)
             {
                 self.aerobicLevel = 0;
                 self.exhausted = false;
                 self.gourmandExhausted = false;
+                ISGORMAUND = true;
 
             }
+
+            if (true)
+
+            {
+                if(self.IsPressed(GourmandsBarf))
+                {
+                    self.objectInStomach = RandomStomachItem(self);
+                }
+            }
+
+
+
             if (OptionsMenu1.gourmandFlightActive.Value == true && self.SlugCatClass == MoreSlugcatsEnums.SlugcatStatsName.Gourmand)
             {
-
-                if (self.input[0].pckp && !monkAscension && self.input[0].jmp)
+                if (monkCooldown > -1)
                 {
+                    monkCooldown--;
+                }
+
+                if (self.IsPressed(SaintFlight) && !monkAscension && monkCooldown < 0)
+                {
+                        monkCooldown = 10;
                     monkAscension = true;
                     self.wantToJump = 0;
                     self.room.PlaySound(SoundID.SS_AI_Give_The_Mark_Boom, self.mainBodyChunk, false, 1f, 1f);
@@ -95,8 +580,9 @@ namespace SlugTemplate
                         self.room.AddObject(new WaterDrip(self.bodyChunks[1].pos, Custom.DegToVec(UnityEngine.Random.value * 360f) * Mathf.Lerp(4f, 21f, Random.value), false));
                     }
                 }
-                if (self.input[0].pckp && monkAscension && !self.input[0].jmp)
+                if (self.IsPressed(SaintFlight) && monkAscension && monkCooldown < 0)
                 {
+                    monkCooldown = 10;
                     deactivateAscension = true;
 
                 }
@@ -426,7 +912,7 @@ namespace SlugTemplate
 
             if (OptionsMenu1.PyroJumpEnabled.Value && self.SlugCatClass == MoreSlugcatsEnums.SlugcatStatsName.Gourmand)
             {
-                if (self.input[0].jmp && self.input[0].pckp && self.pyroJumpCooldown < 0)
+                if (self.IsPressed(ArtificersBoom) && self.pyroJumpCooldown < 0)
                 {
                     self.noGrabCounter = 5;
                     Vector2 pos = self.firstChunk.pos;
@@ -495,7 +981,7 @@ namespace SlugTemplate
 
             if (true)
             {
-                if (self.input[0].pckp && self.FreeHand() > -1)
+                if (OptionsMenu1.SpearAbility.Value && self.IsPressed(SpearMastersSpears) && self.FreeHand() > -1)
                 {
                     self.room.PlaySound(MoreSlugcatsEnums.MSCSoundID.SM_Spear_Grab, 0f, 1f, 1f + Random.value * 0.5f);
                     AbstractSpear abstractSpear = new AbstractSpear(self.room.world, null, self.room.GetWorldCoordinate(self.mainBodyChunk.pos), self.room.game.GetNewID(), false);
@@ -517,8 +1003,9 @@ namespace SlugTemplate
       //  public static Configurable<bool> gourmandFlightActive;
         public OptionsMenu1(Plugin plugin)
         {
-            gourmandFlightActive = this.config.Bind<bool>("configgourmandFlightActive", false);
-            PyroJumpEnabled = this.config.Bind<bool>("PyroJumpEnabled", false);
+            gourmandFlightActive = this.config.Bind<bool>("configgourmandFlightActive", true);
+            PyroJumpEnabled = this.config.Bind<bool>("PyroJumpEnabled", true);
+            SpearAbility = this.config.Bind<bool>("SpearAbilityActive", true);
         }
         public override void Initialize()
         {
@@ -546,8 +1033,10 @@ namespace SlugTemplate
 
                 //saint shit
                 new OpCheckBox(gourmandFlightActive, 400f, 400f),
-                 new OpLabel(350f, 450f, "Flight (check settings for keybind)")
-
+                 new OpLabel(350f, 450f, "Flight (check settings for keybind)"),
+                 //spear shit
+                 new OpCheckBox(SpearAbility, 400f, 100f),
+                 new OpLabel(400f, 150f, "Summon spear (check settings for keybind)")
             };
             opTab1.AddItems(UIArrayElements);
 
@@ -563,7 +1052,7 @@ namespace SlugTemplate
         //public readonly Configurable<TYPE> NAME;
         public static Configurable<bool> gourmandFlightActive;
         public static Configurable<bool> PyroJumpEnabled;
-
+        public static Configurable<bool> SpearAbility;
     }
 }
     
